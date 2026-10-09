@@ -1,0 +1,18 @@
+# ===== 本地工具链 (体积大, 各人环境不同, 不入库) =====
+_tools/
+
+# ===== 构建日志 =====
+_build.log
+*.log
+logs/
+
+# ===== IDE / 系统 =====
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# ===== 本地私有配置 =====
+application-local.yml
+.env.local

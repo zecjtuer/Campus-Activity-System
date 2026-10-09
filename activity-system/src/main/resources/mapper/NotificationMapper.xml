@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  NotificationMapper.xml  V2.0
+  - pageByReceiver: 通知列表分页 (联表 activity 取标题)
+-->
+<mapper namespace="com.campus.activity.mapper.NotificationMapper">
+
+    <resultMap id="NotificationVOMap" type="com.campus.activity.dto.NotificationVO">
+        <id     property="id"            column="id"/>
+        <result property="activityId"    column="activity_id"/>
+        <result property="activityTitle" column="title"/>
+        <result property="type"          column="type"/>
+        <result property="content"       column="content"/>
+        <result property="isRead"        column="is_read"/>
+        <result property="createdAt"     column="created_at"/>
+    </resultMap>
+
+    <select id="pageByReceiver" resultMap="NotificationVOMap">
+        SELECT
+            n.id,
+            n.activity_id,
+            n.type,
+            n.content,
+            n.is_read,
+            n.created_at,
+            a.title
+          FROM notifications n
+          LEFT JOIN activity a ON a.activity_id = n.activity_id
+         WHERE n.receiver_account = #{account}
+           <if test="onlyUnread != null and onlyUnread == true">
+               AND n.is_read = 0
+           </if>
+         ORDER BY n.created_at DESC
+    </select>
+
+</mapper>

@@ -1,0 +1,49 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: #409eff;
+  text-decoration: none;
+}
+
+.page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 20px;
+  color: #303133;
+}
+
+.tag-ONGOING {
+  color: #67c23a;
+}
+
+.tag-FINISHED {
+  color: #909399;
+}
+
+.tag-ENROLLED {
+  color: #409eff;
+}
+
+.tag-WITHDRAWN {
+  color: #e6a23c;
+}
+
+.tag-INVALID {
+  color: #f56c6c;
+}
