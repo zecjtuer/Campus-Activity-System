@@ -6,9 +6,9 @@
         <span>校园活动管理系统 · 我的报名</span>
       </div>
       <div class="header-right">
-        <el-badge :value="unread" :hidden="unread === 0">
+        <el-badge :value="unread" :hidden="unread === 0" class="msg-badge">
           <el-button text @click="$router.push({ name: 'Notifications' })">
-            <el-icon><Bell /></el-icon> 消息
+            <el-icon class="bell-icon"><Bell /></el-icon> 消息
           </el-button>
         </el-badge>
         <el-button text @click="$router.push({ name: 'Student' })">返回活动列表</el-button>
@@ -41,9 +41,21 @@
         </el-form-item>
       </el-form>
 
-      <el-table v-loading="loading" :data="records" stripe>
+      <el-table
+        v-loading="loading"
+        :data="records"
+        stripe
+        :row-class-name="rowClassName"
+      >
         <el-table-column prop="activityId" label="活动ID" width="80" />
-        <el-table-column prop="title" label="活动名称" min-width="160" />
+        <el-table-column label="活动名称" min-width="160">
+          <template #default="{ row }">
+            <span>{{ row.title }}</span>
+            <el-tag v-if="changedIds.has(row.recordId)" size="small" type="danger" class="new-tag">
+              状态更新
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="活动时间" width="170">
           <template #default="{ row }">{{ formatTime(row.activityTime) }}</template>
         </el-table-column>
@@ -72,6 +84,8 @@
               v-if="row.displayStatus === 'ONGOING'"
               size="small"
               type="warning"
+              :loading="submitting === row.activityId"
+              :disabled="submitting"
               @click="handleWithdraw(row)"
             >
               退选
@@ -102,15 +116,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Bell } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import { useUserStore } from '@/stores/user'
-import { myRegistrations, withdrawActivity, unreadCount } from '@/api/student'
+import { useNotify } from '@/composables/useNotify'
+import { myRegistrations, withdrawActivity } from '@/api/student'
 
 const router = useRouter()
 const userStore = useUserStore()
+const { unread, startPolling, refresh: refreshUnread } = useNotify()
 
 const loading = ref(false)
 const records = ref([])
 const total = ref(0)
-const unread = ref(0)
+const submitting = ref(false)
+const changedIds = ref(new Set()) // V3.0: 状态变化的记录ID集合, 用于高亮
+let prevStatusMap = new Map() // 上次加载的 recordId -> status 快照
 const query = reactive({
   current: 1,
   size: 10,
@@ -144,6 +162,11 @@ function displayLabel(status) {
   }[status] || status
 }
 
+// V3.0: 状态变化行高亮 (对比上次快照)
+function rowClassName({ row }) {
+  return changedIds.value.has(row.recordId) ? 'row-changed' : ''
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -152,7 +175,19 @@ async function loadData() {
       size: query.size,
       status: query.status || undefined
     })
-    records.value = data.records || []
+    const newRecords = data.records || []
+    // 计算状态变化的记录
+    const changed = new Set()
+    for (const r of newRecords) {
+      const prev = prevStatusMap.get(r.recordId)
+      if (prev !== undefined && prev !== r.displayStatus) {
+        changed.add(r.recordId)
+      }
+    }
+    changedIds.value = changed
+    // 更新快照
+    prevStatusMap = new Map(newRecords.map(r => [r.recordId, r.displayStatus]))
+    records.value = newRecords
     total.value = data.total || 0
   } finally {
     loading.value = false
@@ -175,21 +210,16 @@ async function handleWithdraw(row) {
   } catch {
     return
   }
+  submitting.value = row.activityId
   try {
     await withdrawActivity(row.activityId)
     ElMessage.success('退选成功')
     loadData()
-    loadUnread()
+    refreshUnread()
   } catch (e) {
-    // ignore
-  }
-}
-
-async function loadUnread() {
-  try {
-    unread.value = await unreadCount()
-  } catch (e) {
-    // ignore
+    ElMessage.error(e?.response?.data?.message || e?.message || '退选失败, 请重试')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -201,7 +231,7 @@ function handleLogout() {
 
 onMounted(() => {
   loadData()
-  loadUnread()
+  startPolling(30000)
 })
 </script>
 
@@ -254,5 +284,28 @@ onMounted(() => {
 .pager {
   margin-top: 16px;
   justify-content: flex-end;
+}
+
+/* V3.0: 状态变化行高亮 + 消息红点脉冲 */
+:deep(.row-changed) {
+  background-color: #fff7e6 !important;
+  animation: row-flash 2s ease-in-out 3;
+}
+.new-tag {
+  margin-left: 8px;
+}
+.msg-badge :deep(.el-badge__content) {
+  animation: badge-pulse 1.5s ease-in-out infinite;
+}
+.bell-icon {
+  transition: transform 0.3s;
+}
+@keyframes row-flash {
+  0%, 100% { background-color: #fff7e6; }
+  50% { background-color: #ffe4b5; }
+}
+@keyframes badge-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.85; }
 }
 </style>

@@ -53,8 +53,9 @@ public class RegistrationServiceImpl implements RegistrationService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RegisterResultVO register(Long activityId, String studentAccount) {
-        // 校验 1: 活动存在
-        Activity activity = activityMapper.selectById(activityId);
+        // V3.0: 用 FOR UPDATE 悲观锁锁定活动行, 高并发下防止 COUNT 读到过期值导致超卖。
+        // 数据依据: 模拟数据热门活动 40-50% 报名请求超 1s, 存在 capacity_conflict。
+        Activity activity = activityMapper.selectByIdForUpdate(activityId);
         if (activity == null) {
             throw new BusinessException(ResultCode.ACTIVITY_NOT_FOUND);
         }

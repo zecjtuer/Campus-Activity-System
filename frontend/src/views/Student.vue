@@ -9,7 +9,7 @@
         <el-text>{{ userStore.name }} ({{ userStore.account }})</el-text>
         <el-badge :value="unread" :hidden="unread === 0" class="msg-badge">
           <el-button text @click="$router.push({ name: 'Notifications' })">
-            <el-icon><Bell /></el-icon> 消息
+            <el-icon class="bell-icon"><Bell /></el-icon> 消息
           </el-button>
         </el-badge>
         <el-button text @click="$router.push({ name: 'StudentRecord' })">我的报名</el-button>
@@ -73,7 +73,8 @@
             <el-button
               size="small"
               type="primary"
-              :disabled="!canRegister(row)"
+              :loading="submitting === row.activityId"
+              :disabled="!canRegister(row) || submitting"
               @click="handleRegister(row)"
             >
               {{ row.remaining === 0 ? '候补' : '报名' }}
@@ -128,7 +129,8 @@
         <el-button
           v-if="!detail?.myStatus"
           type="primary"
-          :disabled="!canRegisterDetail"
+          :loading="submitting"
+          :disabled="!canRegisterDetail || submitting"
           @click="handleRegisterFromDetail"
         >
           {{ detail?.remaining === 0 ? '候补登记' : '报名' }}
@@ -136,6 +138,8 @@
         <el-button
           v-else-if="detail?.myStatus === 'ENROLLED'"
           type="warning"
+          :loading="submitting"
+          :disabled="submitting"
           @click="handleWithdrawFromDetail"
         >
           退选
@@ -152,16 +156,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Bell } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import { useUserStore } from '@/stores/user'
+import { useNotify } from '@/composables/useNotify'
 import {
-  pageActivities, getActivityDetail, registerActivity, withdrawActivity, unreadCount
+  pageActivities, getActivityDetail, registerActivity, withdrawActivity
 } from '@/api/student'
 
 const router = useRouter()
 const userStore = useUserStore()
+const { unread, startPolling, stopPolling, refresh: refreshUnread } = useNotify()
 
 const loading = ref(false)
 const activityList = ref([])
 const total = ref(0)
+const submitting = ref(false) // V3.0: 防重复提交, 请求期间锁定所有报名/退选按钮
 const query = reactive({
   current: 1,
   size: 10,
@@ -170,7 +177,6 @@ const query = reactive({
 
 const detailVisible = ref(false)
 const detail = ref(null)
-const unread = ref(0)
 
 // 从学号推导年级: S2024001 -> 2024
 const myGrade = userStore.account.length >= 5 ? userStore.account.substring(1, 5) : ''
@@ -242,26 +248,33 @@ async function handleRegister(row) {
   } catch {
     return
   }
+  submitting.value = row.activityId
   try {
     const result = await registerActivity(row.activityId)
     ElMessage.success(result.message || '操作成功')
     loadData()
-    loadUnread()
+    refreshUnread()
   } catch (e) {
-    // ignore
+    // V3.0: 显示后端返回的具体错误原因 (名额满/重复报名/年级不符等)
+    ElMessage.error(e?.response?.data?.message || e?.message || '报名失败, 请重试')
+  } finally {
+    submitting.value = false
   }
 }
 
 async function handleRegisterFromDetail() {
   if (!detail.value) return
+  submitting.value = true
   try {
     const result = await registerActivity(detail.value.activityId)
     ElMessage.success(result.message || '操作成功')
     openDetail({ activityId: detail.value.activityId })
     loadData()
-    loadUnread()
+    refreshUnread()
   } catch (e) {
-    // ignore
+    ElMessage.error(e?.response?.data?.message || e?.message || '报名失败, 请重试')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -276,22 +289,17 @@ async function handleWithdrawFromDetail() {
   } catch {
     return
   }
+  submitting.value = true
   try {
     await withdrawActivity(detail.value.activityId)
     ElMessage.success('退选成功')
     openDetail({ activityId: detail.value.activityId })
     loadData()
-    loadUnread()
+    refreshUnread()
   } catch (e) {
-    // ignore
-  }
-}
-
-async function loadUnread() {
-  try {
-    unread.value = await unreadCount()
-  } catch (e) {
-    // ignore
+    ElMessage.error(e?.response?.data?.message || e?.message || '退选失败, 请重试')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -303,7 +311,7 @@ function handleLogout() {
 
 onMounted(() => {
   loadData()
-  loadUnread()
+  startPolling(30000) // V3.0: 每30秒轮询未读通知, 状态变化时主动弹窗
 })
 </script>
 
@@ -356,5 +364,20 @@ onMounted(() => {
 .pager {
   margin-top: 16px;
   justify-content: flex-end;
+}
+
+/* V3.0: 消息红点脉冲动画, 未读时吸引注意 */
+.msg-badge :deep(.el-badge__content) {
+  animation: badge-pulse 1.5s ease-in-out infinite;
+}
+.bell-icon {
+  transition: transform 0.3s;
+}
+.bell-icon:hover {
+  transform: scale(1.15);
+}
+@keyframes badge-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.85; }
 }
 </style>

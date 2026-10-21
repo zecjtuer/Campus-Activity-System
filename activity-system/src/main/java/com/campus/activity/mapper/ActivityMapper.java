@@ -37,4 +37,12 @@ public interface ActivityMapper extends BaseMapper<Activity> {
              GROUP BY activity_id
             """)
     List<Map<String, Object>> countEnrolledByTeacher(@Param("teacherAccount") String teacherAccount);
+
+    /**
+     * V3.0: 带悲观锁 (FOR UPDATE) 查询活动
+     * 在报名事务内调用, 锁定活动行, 防止高并发下 COUNT 读到过期值导致超卖。
+     * 数据依据: 模拟数据中热门活动 40-50% 报名请求超 1s, 且出现 capacity_conflict。
+     */
+    @Select("SELECT * FROM activity WHERE activity_id = #{id} AND deleted = 0 FOR UPDATE")
+    Activity selectByIdForUpdate(@Param("id") Long id);
 }
